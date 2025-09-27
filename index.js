@@ -9,15 +9,26 @@ import { createServer } from "http";
 import { Server } from "socket.io";
 import jwt from "jsonwebtoken";
 
-dotenv.config();
+dotenv.config(); // Must be at the top to load .env
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
 /* -------------------- MIDDLEWARE -------------------- */
+const allowedOrigins = [
+  "http://localhost:5173",
+  "https://haiderydynamics.netlify.app", // ✅ your Netlify domain
+];
+
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || "http://localhost:5173",
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
     methods: ["GET", "POST", "PUT", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
@@ -39,12 +50,11 @@ const server = createServer(app);
 
 export const io = new Server(server, {
   cors: {
-    origin: process.env.CLIENT_URL || "http://localhost:5173",
+    origin: allowedOrigins,
     methods: ["GET", "POST"],
   },
 });
 
-// Track connected clients: { userId: socketId }
 const clients = {};
 
 // Socket authentication middleware
@@ -54,7 +64,7 @@ io.use((socket, next) => {
     if (!token) return next(new Error("Unauthorized: No token provided"));
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    if (!decoded || !decoded.id) return next(new Error("Invalid token"));
+    if (!decoded?.id) return next(new Error("Invalid token"));
 
     socket.userId = decoded.id;
     next();
@@ -64,13 +74,12 @@ io.use((socket, next) => {
   }
 });
 
+// Socket connection handling
 io.on("connection", (socket) => {
   console.log(`📡 Client connected: ${socket.id}, UserID: ${socket.userId}`);
 
-  // Map userId to socket.id
   clients[socket.userId] = socket.id;
 
-  // Listen for custom events
   socket.on("notify-user", (data) => {
     const targetSocket = clients[data.userId];
     if (targetSocket) {
@@ -80,25 +89,27 @@ io.on("connection", (socket) => {
   });
 
   socket.on("disconnect", () => {
-    console.log(`❌ Client disconnected: ${socket.id}`);
-    // Remove from clients mapping
     for (let userId in clients) {
-      if (clients[userId] === socket.id) {
-        delete clients[userId];
-        break;
-      }
+      if (clients[userId] === socket.id) delete clients[userId];
     }
+    console.log(`❌ Client disconnected: ${socket.id}`);
   });
 });
 
 /* -------------------- DATABASE + SERVER -------------------- */
+// Use different URIs for local dev vs production (Render)
+const MONGO_URI =
+  process.env.NODE_ENV === "production"
+    ? process.env.MONGO_URI_PROD
+    : process.env.MONGO_URI_LOCAL;
+
+// Debug: Ensure correct URI
+console.log("Connecting to MongoDB with URI:", MONGO_URI);
+
 mongoose
-  .connect(process.env.MONGO_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-  })
+  .connect(MONGO_URI)
   .then(() => {
-    console.log("✅ Connected to MongoDB");
+    console.log("✅ Connected to MongoDB Atlas");
     server.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
     });
