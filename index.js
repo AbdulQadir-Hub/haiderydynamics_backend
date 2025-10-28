@@ -9,43 +9,51 @@ import { createServer } from "http";
 import { Server } from "socket.io";
 import jwt from "jsonwebtoken";
 
-dotenv.config(); // Must be at the top to load .env
+dotenv.config(); // Load .env before everything
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-/* -------------------- MIDDLEWARE -------------------- */
+/* -------------------- ALLOWED ORIGINS -------------------- */
 const allowedOrigins = [
-  "http://localhost:5173",
-  "https://haiderydynamics.netlify.app", // ✅ your Netlify domain
+  "http://localhost:3000",
+  "https://haiderydynamics.com",
+  "https://www.haiderydynamics.com",
+  "https://haiderydynamics.netlify.app",
 ];
 
+/* -------------------- CORS CONFIG -------------------- */
 app.use(
   cors({
-    origin: (origin, callback) => {
+    origin: function (origin, callback) {
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
+        console.warn(`❌ Blocked by CORS: ${origin}`);
         callback(new Error("Not allowed by CORS"));
       }
     },
-    methods: ["GET", "POST", "PUT", "DELETE"],
-    allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 
+// Handle preflight (OPTIONS) manually to ensure compatibility on Render
+app.options("*", cors());
+
+/* -------------------- BODY PARSER -------------------- */
 app.use(express.json());
 
-/* -------------------- API ROUTES -------------------- */
+/* -------------------- ROUTES -------------------- */
 app.use("/api/auth", authRoutes);
 app.use("/api/client", clientRoutes);
 
 app.get("/", (req, res) => {
-  res.send("✅ HaideryDynamics Backend Running");
+  res.send("✅ HaideryDynamics Backend Running Successfully!");
 });
 
-/* -------------------- SOCKET.IO -------------------- */
+/* -------------------- SOCKET.IO CONFIG -------------------- */
 const server = createServer(app);
 
 export const io = new Server(server, {
@@ -57,7 +65,6 @@ export const io = new Server(server, {
 
 const clients = {};
 
-// Socket authentication middleware
 io.use((socket, next) => {
   try {
     const token = socket.handshake.auth?.token;
@@ -74,7 +81,6 @@ io.use((socket, next) => {
   }
 });
 
-// Socket connection handling
 io.on("connection", (socket) => {
   console.log(`📡 Client connected: ${socket.id}, UserID: ${socket.userId}`);
 
@@ -96,14 +102,12 @@ io.on("connection", (socket) => {
   });
 });
 
-/* -------------------- DATABASE + SERVER -------------------- */
-// Use different URIs for local dev vs production (Render)
+/* -------------------- DATABASE CONNECTION -------------------- */
 const MONGO_URI =
   process.env.NODE_ENV === "production"
     ? process.env.MONGO_URI_PROD
     : process.env.MONGO_URI_LOCAL;
 
-// Debug: Ensure correct URI
 console.log("Connecting to MongoDB with URI:", MONGO_URI);
 
 mongoose
