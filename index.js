@@ -18,8 +18,7 @@ const PORT = process.env.PORT || 5000;
 const allowedOrigins = [
   "http://localhost:3000",
   "https://haiderydynamics.com",
-  "https://www.haiderydynamics.com",
-  "https://haiderydynamics.netlify.app",
+  "https://www.haiderydynamics.com"
 ];
 
 /* -------------------- CORS CONFIG -------------------- */
